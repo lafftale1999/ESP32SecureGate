@@ -1,0 +1,6 @@
+build/
+sdkconfig
+sdkconfig.old
+main/include/config.h
+components/
+.vscode/
