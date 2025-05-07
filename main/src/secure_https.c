@@ -1,3 +1,5 @@
+#include "include/secure_https.h"
+
 #include <string.h>
 #include <stdlib.h>
 #include <inttypes.h>
@@ -22,9 +24,9 @@
 #include "lwip/netdb.h"
 #include "lwip/dns.h"
 
-#include "esp_tls.h"
+
 #include "sdkconfig.h"
-#include "time_sync.h"
+#include "include/time_sync.h"
 
 /* Constants that aren't configurable in menuconfig */
 #define WEB_SERVER "www.howsmyssl.com"
@@ -46,7 +48,7 @@ static const char HOWSMYSSL_REQUEST[] =
 extern const uint8_t server_root_cert_pem_start[] asm("_binary_server_root_cert_pem_start");
 extern const uint8_t server_root_cert_pem_end[]   asm("_binary_server_root_cert_pem_end");
 
-static void https_get_request(esp_tls_cfg_t cfg, const char *WEB_SERVER_URL, const char *REQUEST)
+void https_get_request(esp_tls_cfg_t cfg, const char *WEB_SERVER_URL, const char *REQUEST)
 {
     char buf[512];
     int ret, len;
@@ -120,7 +122,7 @@ exit:
     }
 }
 
-static void https_get_request_using_cacert_buf(void)
+void https_get_request_using_cacert_buf(void)
 {
     ESP_LOGI(TAG, "https_request using cacert_buf");
     esp_tls_cfg_t cfg = {
@@ -130,7 +132,7 @@ static void https_get_request_using_cacert_buf(void)
     https_get_request(cfg, WEB_URL, HOWSMYSSL_REQUEST);
 }
 
-static void https_request_task(void *pvparameters)
+void https_request_task(void *pvparameters)
 {
     ESP_LOGI(TAG, "Start https_request example");
 
