@@ -5,6 +5,7 @@
 #include "include/secure_wifi_driver.h"
 #include "include/secure_http_request.h"
 #include "include/led_response.h"
+#include "include/rfid_scanner.h"
 #include "nvs_flash.h"
 
 void app_main(void)
@@ -16,14 +17,19 @@ void app_main(void)
     }
     ESP_ERROR_CHECK(ret);
 
+    static rc522_driver_handle_t driver;
+    static rc522_handle_t scanner;
+
+    rc522_init(&driver, &scanner);
+
     wifi_init();
     wait_for_connection();
-    button_init();
-    led_init();
+    // button_init();
+    // led_init();
     
     while(1) {
         if(is_clicked) {
-            http_request_args_t *http_args = malloc(sizeof(http_request_args_t));
+            /* http_request_args_t *http_args = malloc(sizeof(http_request_args_t));
             http_args->url = API_EP_ADD;
             http_args->caller = xTaskGetCurrentTaskHandle();
             http_args->status = ESP_FAIL;
@@ -40,7 +46,7 @@ void app_main(void)
                 blink_red();
             }
 
-            free(http_args);
+            free(http_args); */
         }
         vTaskDelay(50 / portTICK_PERIOD_MS);
     }
