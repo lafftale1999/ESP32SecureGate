@@ -4,6 +4,7 @@
 #include "esp_event.h"
 #include "esp_log.h"
 #include "esp_http_client.h"
+#include "rc522_picc.h"
 
 static const char *HTTP_TAG = "http_request";
 
@@ -20,6 +21,33 @@ esp_err_t _http_event_handler(esp_http_client_event_t *event) {
     }
 
     return ESP_OK;
+}
+
+void create_rfid_scan_get_url(const char* uid, char *url) {
+    memset(url, 0, sizeof(url));
+
+    char uid_parsed[RC522_PICC_UID_STR_BUFFER_SIZE_MAX];
+
+    uint8_t unparsed_index = 0;
+    uint8_t parsed_index = 0;
+
+    while (uid[unparsed_index] != '\0' && parsed_index < sizeof(uid_parsed) - 4) {
+        if (uid[unparsed_index] == ' ') {
+            uid_parsed[parsed_index++] = '%';
+            uid_parsed[parsed_index++] = '2';
+            uid_parsed[parsed_index++] = '0';
+        } else {
+            uid_parsed[parsed_index++] = uid[unparsed_index];
+        }
+        unparsed_index++;
+    }
+
+    // Avsluta strängen
+    uid_parsed[parsed_index] = '\0';
+
+    snprintf(url, HTTP_MAX_URL_SIZE, "%s/%s/%s/%s", API_URL, DEVICE_ID, DEVICE_PASSWORD, uid_parsed);
+
+    ESP_LOGI(HTTP_TAG, "Scanned URL has been created: %s", url);
 }
 
 /* static void parseJSON(const char* unformatted_string) {
@@ -90,7 +118,7 @@ void http_post_task(void *pvParameters) {
     esp_http_client_handle_t client = esp_http_client_init(&config);
 
     char post_data[128] = {};
-    snprintf(post_data, sizeof(post_data), "{\"model\":\"%s\"}", MODEL_NAME);
+    snprintf(post_data, sizeof(post_data), "{\"model\":\"%s\"}", DEVICE_ID);
 
     esp_http_client_set_method(client, HTTP_METHOD_POST);
     esp_http_client_set_header(client, "Content-Type", "application/json");
