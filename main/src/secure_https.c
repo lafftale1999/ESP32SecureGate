@@ -39,7 +39,7 @@ static const char *TAG = "HTTPS";
 extern const uint8_t server_root_cert_pem_start[] asm("_binary_secure_gate_server_cert_pem_start");
 extern const uint8_t server_root_cert_pem_end[]   asm("_binary_secure_gate_server_cert_pem_end");
 
-void https_get_request(esp_tls_cfg_t cfg, https_request_args_t *args)
+void https_send_request(esp_tls_cfg_t cfg, https_request_args_t *args)
 {
     bool got_status_line = false;
     char buf[MAX_HTTPS_OUTPUT_BUFFER + 1];
@@ -135,7 +135,7 @@ cleanup:
     esp_tls_conn_destroy(tls);
 }
 
-void https_get_request_using_cacert_buf(https_request_args_t *args)
+void https_send_with_cert(https_request_args_t *args)
 {
     ESP_LOGI(TAG, "https_request using cacert_buf");
     esp_tls_cfg_t cfg = {
@@ -143,18 +143,14 @@ void https_get_request_using_cacert_buf(https_request_args_t *args)
         .cacert_bytes = server_root_cert_pem_end - server_root_cert_pem_start,
         .skip_common_name = true
     };
-    https_get_request(cfg, args);
+    https_send_request(cfg, args);
 }
 
 void https_request_task(void *pvparameters)
 {
     https_request_args_t *args = (https_request_args_t*) pvparameters;
-
-    ESP_LOGI(TAG, "************ START HTTP REQUEST ************");
-
-    ESP_LOGI(TAG, "Minimum free heap size: %" PRIu32 " bytes", esp_get_minimum_free_heap_size());
-    https_get_request_using_cacert_buf(args);
-    ESP_LOGI(TAG, "************ END HTTP REQUEST ************");
+    
+    https_send_with_cert(args);
 
     if(args->caller != NULL) {
         xTaskNotifyGive(args->caller);
@@ -162,58 +158,121 @@ void https_request_task(void *pvparameters)
     vTaskDelete(NULL);
 }
 
-void parseUID(const char* uid, char uid_to_parse[RC522_PICC_UID_STR_BUFFER_SIZE_MAX]) {
-    uint8_t unparsed_index = 0;
-    uint8_t parsed_index = 0;
+void build_request_body(const char** keys, const char **values, size_t amount_of_values, char* request_body) {
+    memset(request_body, 0, REQUEST_BODY_SIZE);
 
-    while (uid[unparsed_index] != '\0' && parsed_index < RC522_PICC_UID_STR_BUFFER_SIZE_MAX - 4) {
-        if (uid[unparsed_index] == ' ') {
-            uid_to_parse[parsed_index++] = '%';
-            uid_to_parse[parsed_index++] = '2';
-            uid_to_parse[parsed_index++] = '0';
-        } else {
-            uid_to_parse[parsed_index++] = uid[unparsed_index];
+    snprintf(request_body, REQUEST_BODY_SIZE, "{");
+
+    for(size_t i = 0; i < amount_of_values; i++) {
+        strncat(request_body, "\"", REQUEST_BODY_SIZE - strlen(request_body) - 1);
+        strncat(request_body, keys[i], REQUEST_BODY_SIZE - strlen(request_body) - 1);
+        strncat(request_body, "\":\"", REQUEST_BODY_SIZE - strlen(request_body) - 1);
+        strncat(request_body, values[i], REQUEST_BODY_SIZE - strlen(request_body) - 1);
+        strncat(request_body, "\"", REQUEST_BODY_SIZE - strlen(request_body) - 1);
+        if(i < amount_of_values - 1) {
+            strncat(request_body, ",", REQUEST_BODY_SIZE - strlen(request_body) - 1);
         }
-        unparsed_index++;
     }
 
-    // Avsluta strängen
-    uid_to_parse[parsed_index] = '\0';
+    strncat(request_body, "}", REQUEST_BODY_SIZE - strlen(request_body) - 1);
 }
 
-esp_err_t create_check_uid_get_request(https_request_args_t *args, scanned_picc_data_t *data) {
-    // Format UID for url
-    char url_parsed_uid[RC522_PICC_UID_STR_BUFFER_SIZE_MAX];
-    parseUID(data->uid_string, url_parsed_uid);
+void set_request_path(https_request_args_t *args, const char *path) {
+    memset(args->path, 0, MAX_PATH_LENGTH);
+    snprintf(args->path, MAX_PATH_LENGTH, "%s", path);
+}
 
-    // Create PATH for request
-    char request_path[256];
-    int path_length = snprintf(request_path, sizeof(request_path), 
-        "/%s/%s/%s", DEVICE_ID, DEVICE_PASSWORD, url_parsed_uid);
-
-    if(path_length <= 0 || path_length >= sizeof(request_path)) {
-        return ESP_FAIL; // path too long or not initiated
-    }
-
-    // Create URL for endpoint
+void set_request_url(https_request_args_t *args) {
     memset(args->url, 0, HTTPS_MAX_URL_SIZE);
-    int url_len = snprintf(args->url, HTTPS_MAX_URL_SIZE, "%s/%s/%s/%s", SERVER_ROOT, DEVICE_ID, DEVICE_PASSWORD, url_parsed_uid);
-    if (url_len < 0 || url_len >= HTTPS_MAX_URL_SIZE) {
-        return ESP_FAIL;
+    snprintf(args->url, HTTPS_MAX_URL_SIZE, "https://%s%s", SERVER_HOST, args->path);
+}
+
+
+void log_http_request(const char *request) {
+    if (request != NULL) {
+        ESP_LOGI(TAG, "Generated HTTP Request:\n%s", request);
+    } else {
+        ESP_LOGW(TAG, "Request buffer is NULL");
+    }
+}
+
+esp_err_t build_request(https_request_args_t *args) {
+    memset(args->request, 0, MAX_HTTPS_REQUEST_BUFFER +1);
+    
+    char request_type[10];
+    char *content_type = "";
+    char content_length[64] = "";
+
+    if(args->https_request_type == POST) {
+        snprintf(request_type, sizeof(request_type), "POST");
+        content_type = "Content-Type: application/json\r\n";
+        snprintf(content_length, sizeof(content_length),
+                "Content-Length: %d\r\n", (int)strlen(args->request_body));
+    }
+    else if(args->https_request_type == GET) {
+        snprintf(request_type, sizeof(request_type), "GET");
     }
 
-    // FORMAT REQUEST
-    memset(args->request, 0, MAX_HTTPS_REQUEST_BUFFER +1);
     int written = snprintf(args->request, MAX_HTTPS_REQUEST_BUFFER + 1,
-        "GET %s HTTP/1.1\r\n"
+        "%s %s HTTP/1.1\r\n"
         "Host: %s\r\n"
         "User-Agent: esp-idf/1.0 esp32\r\n"
         "Connection: close\r\n"
-        "\r\n", request_path ,SERVER_HOST);
+        "%s"
+        "%s"
+        "\r\n"
+        "%s",
+        request_type, args->path, 
+        SERVER_HOST,
+        content_type,
+        content_length,
+        (args->https_request_type == POST) ? args->request_body : "");
     
     if (written < 0 || written >= MAX_HTTPS_REQUEST_BUFFER + 1) {
         return ESP_FAIL; // Förfrågan var för lång
     }
+    ESP_LOGI(TAG, "%s", args->url);
+    log_http_request(args->request);
 
     return ESP_OK;
+}
+
+void config_scan_post_request(https_request_args_t *args, scanned_picc_data_t *data) {
+    if (args->https_request_type != POST) {
+        ESP_LOGE(TAG, "Called config_scan_post_request() without POST request type set");
+        return;
+    }
+
+    const char *keys[] = {
+        "deviceID",
+        "devicePassword",
+        "tagID"
+    };
+
+    const char *values[] = {
+        DEVICE_ID,
+        DEVICE_PASSWORD,
+        data->uid_string
+    };
+    build_post_request(args, keys, values, 3);
+    
+}
+
+void build_post_request(https_request_args_t *args, const char **keys, const char **values, uint8_t list_len) {
+    char *event_type = "";
+
+    switch(args->event) {
+        case TAG_SCANNED:
+            event_type = "/card/scan";
+            break;
+
+        default:
+            ESP_LOGE(TAG, "Unkown type in build_post_request");
+            return;
+    }
+
+    build_request_body(keys, values, list_len, args->request_body);
+    set_request_path(args, event_type);
+    set_request_url(args);
+    build_request(args);
 }
