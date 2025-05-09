@@ -4,8 +4,8 @@
 #include "freertos/task.h"
 #include "driver/gpio.h"
 
-#define GREEN_LED GPIO_NUM_23
-#define RED_LED GPIO_NUM_19
+#define GREEN_LED GPIO_NUM_17
+#define RED_LED GPIO_NUM_16
 
 void led_init() {
     gpio_config_t led_config = {
