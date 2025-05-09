@@ -4,3 +4,4 @@ sdkconfig.old
 main/include/config.h
 components/
 .vscode/
+main/certs/

@@ -5,6 +5,7 @@
 #include "include/secure_button.h"
 #include "include/secure_wifi_driver.h"
 #include "include/secure_http_request.h"
+#include "secure_https.h"
 #include "include/led_response.h"
 #include "include/rfid_scanner.h"
 #include "nvs_flash.h"
@@ -33,26 +34,28 @@ void app_main(void)
     
     while(1) {
         if(scanned_data.isScanned) {
-            http_request_args_t *http_args = malloc(sizeof(http_request_args_t));
-            http_args->caller = xTaskGetCurrentTaskHandle();
-            http_args->status = ESP_FAIL;
-            create_rfid_scan_get_url(scanned_data.uid_string, http_args->url);
-            xTaskCreate(http_get_task, "http_get_task", 4096, http_args, 5, NULL);
+            https_request_args_t *https_args = malloc(sizeof(https_request_args_t));
+            https_args->caller = xTaskGetCurrentTaskHandle();
+            https_args->status = ESP_FAIL;
+            create_check_uid_get_request(https_args, &scanned_data);
+            xTaskCreate(https_request_task, "http_get_task", 8192, https_args, 5, NULL);
 
-            // Vänta på HTTP-tasken att bli klar
+            // Vänta på HTTPS-tasken att bli klar
             ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 
             ESP_LOGI(MAIN_TAG, "Current scanned ID: %s", scanned_data.uid_string);
             memset(scanned_data.uid_string, 0, sizeof(scanned_data.uid_string));
             scanned_data.isScanned = false;
 
-            if (http_args->status == ESP_OK) {
-                ESP_LOGI(MAIN_TAG, "SUCCESS: %s", http_args->response_buffer);
+            if (https_args->status == ESP_OK) {
+                ESP_LOGI(MAIN_TAG, "SUCCESS: %s", https_args->response_buffer);
                 blink_green();
             } else {
-                ESP_LOGI(MAIN_TAG, "FAILED: %s", http_args->response_buffer);
+                ESP_LOGI(MAIN_TAG, "FAILED: %s", https_args->response_buffer);
                 blink_red();
             }
+
+            free(https_args);
         }
         vTaskDelay(50 / portTICK_PERIOD_MS);
     }
