@@ -37,7 +37,10 @@ void app_main(void)
             https_request_args_t *https_args = malloc(sizeof(https_request_args_t));
             https_args->caller = xTaskGetCurrentTaskHandle();
             https_args->status = ESP_FAIL;
-            create_check_uid_get_request(https_args, &scanned_data);
+            https_args->https_request_type = POST;
+            https_args->event = TAG_SCANNED;
+            
+            config_scan_post_request(https_args, &scanned_data);
             xTaskCreate(https_request_task, "http_get_task", 8192, https_args, 5, NULL);
 
             // Vänta på HTTPS-tasken att bli klar
@@ -54,7 +57,7 @@ void app_main(void)
                 ESP_LOGI(MAIN_TAG, "FAILED: %s", https_args->response_buffer);
                 blink_red();
             }
-
+            
             free(https_args);
         }
         vTaskDelay(50 / portTICK_PERIOD_MS);
