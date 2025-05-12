@@ -1,5 +1,6 @@
 #include "include/rfid_scanner.h"
 
+#include <string.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/timers.h"
 #include "driver/gpio.h"
@@ -41,6 +42,7 @@ void on_picc_state_changed(void *arg, esp_event_base_t base, int32_t event_id, v
     if (picc->state == RC522_PICC_STATE_ACTIVE) {
         rc522_picc_print(picc);
         rc522_picc_uid_to_str(&picc->uid, scanned_data->uid_string, sizeof(scanned_data->uid_string));
+        hash_sha256((const unsigned char*) scanned_data->uid_string, strlen(scanned_data->uid_string), scanned_data->sha_256_hex);
         scanned_data->isScanned = true;
     }
     else if (picc->state == RC522_PICC_STATE_IDLE && event->old_state >= RC522_PICC_STATE_ACTIVE) {

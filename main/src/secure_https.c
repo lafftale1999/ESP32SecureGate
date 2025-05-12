@@ -252,7 +252,7 @@ void config_scan_post_request(https_request_args_t *args, scanned_picc_data_t *d
     const char *values[] = {
         DEVICE_ID,
         DEVICE_PASSWORD,
-        data->uid_string
+        data->sha_256_hex
     };
     build_post_request(args, keys, values, 3);
     

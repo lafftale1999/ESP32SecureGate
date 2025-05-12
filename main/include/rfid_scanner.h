@@ -12,10 +12,12 @@
 #include "driver/rc522_spi.h"
 #include "rc522_picc.h"
 #include "stdbool.h"
+#include "hash_sha256.h"
 
 typedef struct {
     char uid_string[RC522_PICC_UID_STR_BUFFER_SIZE_MAX];
     uint8_t uid_length;
+    char sha_256_hex[(SHA256_DIGEST_SIZE * 2) + 1];
     bool isScanned;
 } scanned_picc_data_t;
 
